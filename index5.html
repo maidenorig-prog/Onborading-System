@@ -1,0 +1,2358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Onboarding System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  html, body, #root { height: 100%; margin: 0; }
+  body { -webkit-font-smoothing: antialiased; font-family: -apple-system, sans-serif; }
+  #boot-msg { padding: 40px; color: #8A6E7C; font-size: 15px; line-height: 1.5; }
+  #boot-msg.error { color: #A83A32; background: #F8E4E1; margin: 24px; border-radius: 10px; white-space: pre-wrap; }
+  #boot-msg a { color: #B8006F; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="root"><div id="boot-msg">Loading Onboarding System&hellip;</div></div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBZ58W2aRmsDkAOr1aVGTR3OAlE3JvgiEI",
+    authDomain: "onboarding-system-blo.firebaseapp.com",
+    databaseURL: "https://onboarding-system-blo-default-rtdb.firebaseio.com",
+    projectId: "onboarding-system-blo",
+    storageBucket: "onboarding-system-blo.firebasestorage.app",
+    messagingSenderId: "806638145415",
+    appId: "1:806638145415:web:70f14ae590ad713f4bcd22",
+  };
+
+  const FIREBASE_NOT_CONFIGURED = firebaseConfig.databaseURL === "PASTE_YOUR_DATABASE_URL_HERE";
+
+  let db = null;
+  if (!FIREBASE_NOT_CONFIGURED) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  }
+
+  window.storage = {
+    async get(key) {
+      if (!db) return null;
+      const snap = await db.ref(key).get();
+      const val = snap.val();
+      if (val === null || val === undefined) return null;
+      return { key, value: val, shared: true };
+    },
+    async set(key, value) {
+      if (!db) return null;
+      await db.ref(key).set(value);
+      return { key, value, shared: true };
+    },
+    async delete(key) {
+      if (!db) return null;
+      await db.ref(key).remove();
+      return { key, deleted: true, shared: true };
+    },
+    async list() {
+      return { keys: [], shared: true };
+    },
+  };
+
+  window.storageSubscribe = function (key, onChange) {
+    if (!db) return null;
+    const ref = db.ref(key);
+    const handler = (snap) => onChange(snap.val());
+    ref.on("value", handler);
+    return () => ref.off("value", handler);
+  };
+
+  function showBootError(msg, isConfig) {
+    var el = document.getElementById("boot-msg");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "boot-msg";
+      document.getElementById("root").appendChild(el);
+    }
+    el.className = "error";
+    if (isConfig) {
+      el.innerHTML =
+        "This page isn't connected to a shared database yet.<br><br>" +
+        "Firebase console: <a href=\"https://console.firebase.google.com\" target=\"_blank\">console.firebase.google.com</a>";
+    } else {
+      el.textContent =
+        "This page failed to load correctly.\n\n" + msg +
+        "\n\nThis is almost always caused by a network/firewall/ad-blocker " +
+        "blocking one of these required scripts:\n" +
+        "  - cdn.tailwindcss.com\n" +
+        "  - unpkg.com (React, React DOM)\n" +
+        "  - gstatic.com (Firebase)\n\n" +
+        "Try: a different network/Wi-Fi, disabling ad blockers for this page, " +
+        "or opening this file in a different browser.";
+    }
+  }
+
+  window.addEventListener("DOMContentLoaded", function () {
+    if (typeof React === "undefined") {
+      showBootError("React failed to load from unpkg.com.");
+    } else if (typeof ReactDOM === "undefined") {
+      showBootError("ReactDOM failed to load from unpkg.com.");
+    } else if (typeof firebase === "undefined") {
+      showBootError("Firebase failed to load from gstatic.com.");
+    } else if (FIREBASE_NOT_CONFIGURED) {
+      showBootError("", true);
+    }
+  });
+</script>
+
+<script>
+const {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback
+} = React;
+
+/* ---------- design tokens ---------- */
+const C = {
+  bg: "#FFF7FB",
+  surface: "#FFFFFF",
+  border: "#F6D3E6",
+  borderStrong: "#F0B9DA",
+  ink: "#2B1E27",
+  inkSoft: "#8A6E7C",
+  inkFaint: "#C79BB6",
+  rose: "#FF0198",
+  roseDark: "#B8006F",
+  roseTint: "#FDE6F2",
+  sage: "#4F7A5E",
+  sageTint: "#E7F0E7",
+  amber: "#B4791F",
+  amberTint: "#FBEDD9",
+  brick: "#A83A32",
+  brickTint: "#F8E4E1",
+  slate: "#5B6B78",
+  slateTint: "#E7ECEF"
+};
+const FONT_IMPORT = "@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');";
+const LOGO_SRC = "data:image/png;base64,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d5OzC9sOanuFFvP5t9ZkeQ9VoCUkqJDz56olQGs+pndX5vtFa0mXH39wcxC+DWSR+O1t2JNXC9zSbRgkSXBUW0jqIXH0a7A+er07w6US5n8/fKDLMYEwxu7ZRHmC8Lj1ZvxpLJpNbx8uwJTmc0anQM6T8XXrgS75+PiBW3M+u/70sOTLy09y6rurJR8HY7pvYcBfbg3gO21qs0o41F9hJ0xJQnEiEg47wVETuaNO2HZeI02x5YOdEW5NPl/dqSkyhOfjMzy2Ep4YbzNe4mALTCHVSUs0Wjpjqcew9WHc6rD+2pKpdaESfktjXxVmC+GAmtT0JbWoCHcSDm9FsW8TbIiEayeaQbRf15rt2m4Jw+7ApsqjGcIg9faqxSB8LCIa417zN9DYyRXkN+cH5f0wbp0ZNpDwB+kZGtO/uF5FeIo+wVWX2yTcrEtCtFgRDm8xfG9DyPkW/8mcTm2BFmgDlW7UaLeErz6P9dlWhOn46wUIL68h6fGUPirhh6tP0GjQuJYmYuZgtenjx4modGs8GNPbj5ctVemBSJge4Jm2PynrCsDXhjBGMQcgzMktQ8KsY7hRO4Gt7tReSzFpxxIWoyPSUJUeK+FjuvsMW81L/BFXLU5VmoCNGHTI+V9aQgv0El+lF66M0eKrd8vSaMkYkC7ZotILZM2WcBD6Yp9BGOZZf18vhBt8UmuKbEG4Sbs0WuKH30xglu5bcK0QFF2fgfA9FPgzqN5fgdxk3pov7z/y5Ct4PxB/pXdCBGfMO5P5FXbCMsO5oSuu5jDnX64mwFwu9vbjNp/UbjSCUqWtQ7p9L8p925O/iRit1zL10TiqN6HPu5SweA8EUjDRX1qwvHMM5OsLLTrAN42P6cs3yFV89D1ueTXnY2j+fD6+v4SHffcNh84+TPheWOJrq/VF4q6L1tmbN9fX3y62xwuyjuWEfCPhWzhf/A9jOBS/JG9LUJWuQ6uPFnBOYL1rwsYQY/COq59A2/dISdgE+c5Fn4kH9xMNIy+5PEOOmWu8vRcfPYeFervE7ouLC7Sl4yeCd0RPbSRpCwqEZWhelWGdE8a0BB6Nmsq2LjNcuyZMA/090b01MHcb6Y0Zgw+X25Kesf6Fo7aRiTRfW8EyHj8VOUoJi6m5Wu/y/rsuOW9Sh7gj69U6HVmNQMHOJQyml/YXdGZ7akj64/Fl6VqOzRG/DJ94PD6uWF1eji9NZ0HvceAH0W9Q/aHg/XvOc11zm7+SdK16RZm/0drBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHhgMF/G18OnIQdHBwcHIj+Dzcai9d/x1H1AAAAAElFTkSuQmCC";
+
+/* ---------- data model helpers ---------- */
+const uid = () => Math.random().toString(36).slice(2, 10);
+const BLO_SYSTEM_DEFS = [{
+  key: "quickbooks",
+  label: "QuickBooks",
+  steps: ["Invite sent", "Employee received invite", "Employee accepted invite", "Account fully set up"]
+}, {
+  key: "booker",
+  label: "Booker",
+  steps: ["Invite sent", "Employee received invite", "Employee accepted invite", "Account fully set up"]
+}, {
+  key: "franconnect",
+  label: "FranConnect",
+  steps: ["Invite sent", "Employee received invite", "Employee accepted invite", "Account fully set up"]
+}, {
+  key: "discord",
+  label: "Discord",
+  steps: ["Invite sent", "Employee joined", "Employee set up profile", "Added to required channels"]
+}];
+const LK_SYSTEM_DEFS = [{
+  key: "quickbooks",
+  label: "QuickBooks",
+  steps: ["Invite sent", "Employee received invite", "Employee accepted invite", "Account fully set up"]
+}, {
+  key: "zenoti",
+  label: "Zenoti",
+  steps: ["Invite sent", "Employee received invite", "Employee accepted invite", "Account Created", "Account fully set up"]
+}, {
+  key: "lashbarlms",
+  label: "LashBar LMS",
+  steps: ["Invite sent", "Employee received invite", "Employee accepted invite", "Account fully set up"]
+}, {
+  key: "discord",
+  label: "Discord",
+  steps: ["Invite sent", "Employee joined", "Employee set up profile", "Added to required channels"]
+}];
+// Union of every system key across both brands, so employee records can hold
+// data for any system regardless of which brand they currently belong to.
+const ALL_SYSTEM_DEFS = [...BLO_SYSTEM_DEFS, ...LK_SYSTEM_DEFS.filter(s => !BLO_SYSTEM_DEFS.some(b => b.key === s.key))];
+function isLashKind(emp) {
+  return emp.position === "Lash Artist" || emp.location === "LashKind Kingwood";
+}
+function systemDefsFor(emp) {
+  return isLashKind(emp) ? LK_SYSTEM_DEFS : BLO_SYSTEM_DEFS;
+}
+const POSITIONS = ["Hair Stylist/Makeup Artist", "Guest Coordinator/Makeup Artist", "Lash Artist"];
+const LOCATIONS = ["Blo Kingwood", "Blo Wood Reserve", "LashKind Kingwood"];
+const TRAINING_VIDEOS = [{
+  label: "Signature Pink Carpet Treatment",
+  url: "https://bloblowdrybar.franconnect.net/fc/control/courseDetailedSummary?courseId=1210792797&pageID=1&cft=c86fff6f-5752-4702-b603-1aa233ccc979"
+}, {
+  label: "Blo University",
+  url: "https://bloblowdrybar.franconnect.net/fc/control/planDetails?planID=7&status=15301&days=0&cft=c86fff6f-5752-4702-b603-1aa233ccc979"
+}];
+const LASHBAR_TRAINING_URL = "https://lashbar-training.trainercentralsite.com/clientapp/app/products/explore-products/all-courses";
+const LASHBAR_COURSES = ["Experienced Stylist Onboarding", "LED Lashes", "Zenoti Training", "Lash Lift & Tint", "Yumi Brow Lamination", "Wax/Brow"];
+const SERVICE_READINESS_ITEMS = ["Lash Extensions", "LED", "Lash Lift (With & Without Keratin)", "Brow Lamination", "Brow Shaping / Threading"];
+const FRONT_DESK_MATERIALS = [{
+  label: "Reservationist Training - Part 1",
+  url: "https://drive.google.com/file/d/1nbnwR2hlGfr874pUOsuKzVY_gl3_I751/view?usp=sharing"
+}, {
+  label: "Reservationist Training - Part 2",
+  url: "https://drive.google.com/file/d/1sM6zBYUyYsZMDQxaBe3uOniU8NrxgbnB/view?usp=sharing"
+}];
+const LK_TRAINING_MATERIALS = [{
+  label: "LashBar Course Catalog (LashKind)",
+  url: LASHBAR_TRAINING_URL
+}];
+function newAccounts() {
+  const o = {};
+  ALL_SYSTEM_DEFS.forEach(s => {
+    o[s.key] = {
+      steps: s.steps.map(() => false)
+    };
+    if (s.key === "franconnect") {
+      o[s.key].loginId = "";
+      o[s.key].password = "";
+      o[s.key].url = "";
+    }
+  });
+  return o;
+}
+function blankEmployee() {
+  return {
+    id: uid(),
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    position: POSITIONS[0],
+    location: LOCATIONS[0],
+    address: "",
+    startDate: "",
+    employeeStatus: "New Hire",
+    offerSent: false,
+    offerSigned: false,
+    licenseType: "Cosmetology",
+    licenseNumber: "",
+    licenseStatus: "Not Verified",
+    licenseVerificationDate: "",
+    licenseExpirationDate: "",
+    licenseNotes: "",
+    accounts: newAccounts(),
+    i9: {
+      completed: false,
+      signed: false
+    },
+    training: TRAINING_VIDEOS.reduce((acc, v) => ({
+      ...acc,
+      [v.label]: false
+    }), {}),
+    lkTraining: LASHBAR_COURSES.reduce((acc, c) => ({
+      ...acc,
+      [c]: false
+    }), {}),
+    serviceReadiness: SERVICE_READINESS_ITEMS.reduce((acc, s) => ({
+      ...acc,
+      [s]: {
+        courseDone: false,
+        modelDone: false,
+        openToGuests: false
+      }
+    }), {}),
+    notes: [],
+    history: [],
+    archived: false,
+    createdAt: new Date().toISOString()
+  };
+}
+function addHistory(emp, text) {
+  return {
+    ...emp,
+    history: [{
+      id: uid(),
+      date: new Date().toISOString(),
+      text
+    }, ...emp.history].slice(0, 50)
+  };
+}
+function stepCount(steps) {
+  let c = 0;
+  for (const s of steps) {
+    if (s) c++;
+  }
+  return c;
+}
+function systemStatus(steps) {
+  const done = stepCount(steps);
+  const total = steps.length;
+  if (done === 0) return "Not started";
+  if (done === total) return "Completed";
+  return "Pending acceptance";
+}
+function i9Status(i9) {
+  if (i9.completed && i9.signed) return "Completed & Signed";
+  if (i9.completed || i9.signed) return "In Progress";
+  return "Not Completed";
+}
+function i9Badge(i9) {
+  const s = i9Status(i9);
+  if (s === "Completed & Signed") return {
+    icon: "\u{1F7E2}",
+    label: s,
+    color: C.sage,
+    tint: C.sageTint
+  };
+  if (s === "In Progress") return {
+    icon: "\u{1F7E1}",
+    label: s,
+    color: C.amber,
+    tint: C.amberTint
+  };
+  return {
+    icon: "\u{1F534}",
+    label: s,
+    color: C.brick,
+    tint: C.brickTint
+  };
+}
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dateStr + "T00:00:00");
+  return Math.round((d - today) / 86400000);
+}
+function licenseDisplay(emp) {
+  const raw = emp.licenseStatus;
+  if (!emp.licenseNumber) {
+    return {
+      label: "Missing number",
+      icon: "\u{1F534}",
+      color: C.brick,
+      tint: C.brickTint,
+      verifiedForProgress: false
+    };
+  }
+  if (raw === "Verified") {
+    const dLeft = daysUntil(emp.licenseExpirationDate);
+    if (dLeft !== null && dLeft < 0) {
+      return {
+        label: "Expired",
+        icon: "\u{1F534}",
+        color: C.brick,
+        tint: C.brickTint,
+        verifiedForProgress: false
+      };
+    }
+    if (dLeft !== null && dLeft <= 30) {
+      return {
+        label: "Expiring soon",
+        icon: "\u26A0\uFE0F",
+        color: C.amber,
+        tint: C.amberTint,
+        verifiedForProgress: true
+      };
+    }
+    return {
+      label: "Verified",
+      icon: "\u{1F7E2}",
+      color: C.sage,
+      tint: C.sageTint,
+      verifiedForProgress: true
+    };
+  }
+  if (raw === "Pending Verification") return {
+    label: "Pending verification",
+    icon: "\u{1F7E1}",
+    color: C.amber,
+    tint: C.amberTint,
+    verifiedForProgress: false
+  };
+  if (raw === "Expired") return {
+    label: "Expired",
+    icon: "\u{1F534}",
+    color: C.brick,
+    tint: C.brickTint,
+    verifiedForProgress: false
+  };
+  if (raw === "Invalid") return {
+    label: "Invalid",
+    icon: "\u{1F534}",
+    color: C.brick,
+    tint: C.brickTint,
+    verifiedForProgress: false
+  };
+  return {
+    label: "Not verified",
+    icon: "\u{1F534}",
+    color: C.brick,
+    tint: C.brickTint,
+    verifiedForProgress: false
+  };
+}
+function offerDisplay(emp) {
+  if (emp.offerSigned) return {
+    label: "Signed",
+    icon: "\u{1F7E2}",
+    color: C.sage,
+    tint: C.sageTint
+  };
+  if (emp.offerSent) return {
+    label: "Sent, awaiting signature",
+    icon: "\u{1F7E1}",
+    color: C.amber,
+    tint: C.amberTint
+  };
+  return {
+    label: "Not sent",
+    icon: "\u{1F534}",
+    color: C.brick,
+    tint: C.brickTint
+  };
+}
+function overallProgress(emp) {
+  const lk = isLashKind(emp);
+  const cats = [emp.offerSent && emp.offerSigned, licenseDisplay(emp).verifiedForProgress, ...systemDefsFor(emp).map(sys => stepCount(emp.accounts[sys.key].steps) === emp.accounts[sys.key].steps.length), emp.i9.completed && emp.i9.signed, lk ? LASHBAR_COURSES.every(c => emp.lkTraining && emp.lkTraining[c]) : TRAINING_VIDEOS.every(v => emp.training && emp.training[v.label])];
+  const done = cats.filter(Boolean).length;
+  return Math.round(done / cats.length * 100);
+}
+function fullName(emp) {
+  return `${emp.firstName} ${emp.lastName}`.trim() || "Unnamed employee";
+}
+function fmtDate(s) {
+  if (!s) return "\u2014";
+  const d = new Date(s + "T00:00:00");
+  if (isNaN(d)) return "\u2014";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  });
+}
+function buildAttentionItems(employees) {
+  const items = [];
+  employees.forEach(emp => {
+    if (emp.archived) return;
+    const name = fullName(emp);
+    if (!emp.offerSent) {
+      items.push({
+        level: "critical",
+        name,
+        msg: "Offer not yet sent",
+        id: emp.id + "-offersent"
+      });
+    } else if (!emp.offerSigned) {
+      items.push({
+        level: "warning",
+        name,
+        msg: "Offer sent, not yet signed",
+        id: emp.id + "-offersigned"
+      });
+    }
+    if (!emp.licenseNumber) {
+      items.push({
+        level: "critical",
+        name,
+        msg: "License number missing",
+        id: emp.id + "-lnum"
+      });
+    } else if (emp.licenseStatus === "Not Verified") {
+      items.push({
+        level: "warning",
+        name,
+        msg: "License not yet verified",
+        id: emp.id + "-lnv"
+      });
+    } else if (emp.licenseStatus === "Pending Verification") {
+      items.push({
+        level: "warning",
+        name,
+        msg: "License pending verification",
+        id: emp.id + "-lpv"
+      });
+    } else if (emp.licenseStatus === "Expired" || emp.licenseStatus === "Invalid") {
+      items.push({
+        level: "critical",
+        name,
+        msg: `License ${emp.licenseStatus.toLowerCase()}`,
+        id: emp.id + "-lbad"
+      });
+    } else if (emp.licenseStatus === "Verified") {
+      const dLeft = daysUntil(emp.licenseExpirationDate);
+      if (dLeft !== null && dLeft < 0) {
+        items.push({
+          level: "critical",
+          name,
+          msg: "License expired",
+          id: emp.id + "-lexp"
+        });
+      } else if (dLeft !== null && dLeft <= 30) {
+        items.push({
+          level: "warning",
+          name,
+          msg: `License expires in ${dLeft} day${dLeft === 1 ? "" : "s"}`,
+          id: emp.id + "-lsoon"
+        });
+      }
+    }
+    systemDefsFor(emp).forEach(sys => {
+      const steps = emp.accounts[sys.key].steps;
+      const c = stepCount(steps);
+      if (c === 0) {
+        items.push({
+          level: "critical",
+          name,
+          msg: `${sys.label} invite not sent`,
+          id: emp.id + "-" + sys.key + "-0"
+        });
+      } else if (c < steps.length) {
+        items.push({
+          level: "warning",
+          name,
+          msg: `${sys.label} invite pending acceptance`,
+          id: emp.id + "-" + sys.key + "-p"
+        });
+      }
+    });
+    if (!emp.i9.completed) {
+      items.push({
+        level: "warning",
+        name,
+        msg: "I-9 not completed",
+        id: emp.id + "-i9c"
+      });
+    } else if (!emp.i9.signed) {
+      items.push({
+        level: "warning",
+        name,
+        msg: "I-9 completed but not signed",
+        id: emp.id + "-i9s"
+      });
+    }
+    if (emp.startDate) {
+      const started = daysUntil(emp.startDate);
+      if (started !== null && started < -14 && overallProgress(emp) < 100) {
+        items.push({
+          level: "critical",
+          name,
+          msg: "Onboarding tasks overdue",
+          id: emp.id + "-overdue"
+        });
+      }
+    }
+  });
+  const order = {
+    critical: 0,
+    warning: 1,
+    info: 2
+  };
+  return items.sort((a, b) => order[a.level] - order[b.level]);
+}
+
+/* ---------- seed data ---------- */
+function seedEmployees() {
+  return [];
+}
+
+/* ---------- small UI atoms ---------- */
+function Badge({
+  icon,
+  label,
+  color,
+  tint,
+  mono
+}) {
+  return /*#__PURE__*/React.createElement("span", {
+    className: "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap",
+    style: {
+      background: tint,
+      color,
+      fontFamily: mono ? "'IBM Plex Mono', monospace" : "'Inter', sans-serif"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, icon), label);
+}
+function ProgressBar({
+  pct,
+  color
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "w-full h-2 rounded-full overflow-hidden",
+    style: {
+      background: C.border
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-full rounded-full transition-all",
+    style: {
+      width: `${pct}%`,
+      background: color || (pct === 100 ? C.sage : pct === 0 ? C.inkFaint : C.rose)
+    }
+  }));
+}
+function LicensePlate({
+  emp,
+  large
+}) {
+  const disp = licenseDisplay(emp);
+  return /*#__PURE__*/React.createElement("div", {
+    className: `flex items-stretch rounded-md overflow-hidden border ${large ? "" : ""}`,
+    style: {
+      borderColor: C.border,
+      background: "#FDFBF8"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 6,
+      background: disp.color
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: `flex flex-col justify-center ${large ? "px-4 py-3" : "px-3 py-1.5"}`
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "'IBM Plex Mono', monospace",
+      letterSpacing: "0.06em",
+      fontWeight: 600,
+      fontSize: large ? 20 : 13,
+      color: emp.licenseNumber ? C.ink : C.inkFaint
+    }
+  }, emp.licenseNumber || "NO LICENSE #"), large && /*#__PURE__*/React.createElement("span", {
+    className: "text-xs mt-0.5",
+    style: {
+      color: C.inkSoft,
+      fontFamily: "'Inter', sans-serif"
+    }
+  }, emp.licenseType, " license")));
+}
+function Field({
+  label,
+  children
+}) {
+  return /*#__PURE__*/React.createElement("label", {
+    className: "flex flex-col gap-1 text-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.inkSoft,
+      fontWeight: 500
+    }
+  }, label), children);
+}
+const inputStyle = {
+  border: `1px solid ${C.border}`,
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontSize: 14,
+  fontFamily: "'Inter', sans-serif",
+  color: C.ink,
+  background: C.surface,
+  outline: "none"
+};
+function TextInput(props) {
+  return /*#__PURE__*/React.createElement("input", {
+    ...props,
+    style: {
+      ...inputStyle,
+      ...(props.style || {})
+    }
+  });
+}
+function Select({
+  children,
+  ...props
+}) {
+  return /*#__PURE__*/React.createElement("select", {
+    ...props,
+    style: {
+      ...inputStyle,
+      ...(props.style || {})
+    }
+  }, children);
+}
+function TextArea(props) {
+  return /*#__PURE__*/React.createElement("textarea", {
+    ...props,
+    style: {
+      ...inputStyle,
+      resize: "vertical",
+      ...(props.style || {})
+    }
+  });
+}
+function Button({
+  variant = "secondary",
+  children,
+  style,
+  ...props
+}) {
+  const base = {
+    fontFamily: "'Inter', sans-serif",
+    fontWeight: 600,
+    fontSize: 13.5,
+    padding: "8px 14px",
+    borderRadius: 8,
+    cursor: "pointer",
+    border: "1px solid transparent",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    transition: "opacity .12s ease"
+  };
+  const variants = {
+    primary: {
+      background: C.rose,
+      color: "#fff"
+    },
+    secondary: {
+      background: C.surface,
+      color: C.ink,
+      borderColor: C.border
+    },
+    ghost: {
+      background: "transparent",
+      color: C.inkSoft
+    },
+    danger: {
+      background: C.brickTint,
+      color: C.brick
+    }
+  };
+  return /*#__PURE__*/React.createElement("button", {
+    ...props,
+    onMouseDown: e => e.currentTarget.style.opacity = "0.85",
+    onMouseUp: e => e.currentTarget.style.opacity = "1",
+    style: {
+      ...base,
+      ...variants[variant],
+      ...style
+    }
+  }, children);
+}
+
+/* ---------- Employee form modal ---------- */
+function EmployeeFormModal({
+  initial,
+  onSave,
+  onClose
+}) {
+  const [f, setF] = useState(initial);
+  const set = (k, v) => setF(prev => ({
+    ...prev,
+    [k]: v
+  }));
+  const isNew = !initial.firstName && !initial.lastName;
+  const canSave = f.firstName.trim() && f.lastName.trim();
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 flex items-center justify-center p-4",
+    style: {
+      background: "rgba(43,33,28,0.45)",
+      zIndex: 60
+    },
+    onMouseDown: e => e.target === e.currentTarget && onClose()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-xl shadow-xl",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between px-6 py-4 border-b",
+    style: {
+      borderColor: C.border
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 20,
+      color: C.ink
+    }
+  }, isNew ? "Add new employee" : `Edit ${fullName(f)}`), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      color: C.inkSoft,
+      fontSize: 20,
+      lineHeight: 1
+    },
+    "aria-label": "Close"
+  }, "×")), /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-5 flex flex-col gap-6"
+  }, /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-3",
+    style: {
+      color: C.roseDark
+    }
+  }, "Employee information"), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-3"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "First name"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: f.firstName,
+    onChange: e => set("firstName", e.target.value),
+    placeholder: "Sarah"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Last name"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: f.lastName,
+    onChange: e => set("lastName", e.target.value),
+    placeholder: "Johnson"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Email address"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "email",
+    value: f.email,
+    onChange: e => set("email", e.target.value),
+    placeholder: "name@company.com"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Phone number"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: f.phone,
+    onChange: e => set("phone", e.target.value),
+    placeholder: "555-0100"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Position"
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: f.position,
+    onChange: e => {
+      const value = e.target.value;
+      set("position", value);
+      if (value === "Lash Artist") {
+        set("licenseType", "Esthetician");
+      }
+    }
+  }, POSITIONS.map(p => /*#__PURE__*/React.createElement("option", {
+    key: p
+  }, p)))), /*#__PURE__*/React.createElement(Field, {
+    label: "Location"
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: f.location,
+    onChange: e => set("location", e.target.value)
+  }, LOCATIONS.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l
+  }, l)))), /*#__PURE__*/React.createElement(Field, {
+    label: "Address"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    placeholder: "Street, city, state, ZIP",
+    value: f.address,
+    onChange: e => set("address", e.target.value)
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Start date"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "date",
+    value: f.startDate,
+    onChange: e => set("startDate", e.target.value)
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Employee status"
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: f.employeeStatus,
+    onChange: e => set("employeeStatus", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", null, "New Hire"), /*#__PURE__*/React.createElement("option", null, "In Progress"), /*#__PURE__*/React.createElement("option", null, "Completed"))), /*#__PURE__*/React.createElement("label", {
+    className: "flex items-center gap-2 text-sm cursor-pointer mt-1",
+    style: {
+      color: C.inkSoft
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: f.offerSent,
+    onChange: e => set("offerSent", e.target.checked)
+  }), "Offer sent"), /*#__PURE__*/React.createElement("label", {
+    className: "flex items-center gap-2 text-sm cursor-pointer mt-1",
+    style: {
+      color: C.inkSoft
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: f.offerSigned,
+    onChange: e => set("offerSigned", e.target.checked)
+  }), "Offer signed"))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-3",
+    style: {
+      color: C.roseDark
+    }
+  }, "Professional license"), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-3"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "License type"
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: f.licenseType,
+    onChange: e => set("licenseType", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", null, "Cosmetology"), /*#__PURE__*/React.createElement("option", null, "Esthetician"), /*#__PURE__*/React.createElement("option", null, "Other"))), /*#__PURE__*/React.createElement(Field, {
+    label: "License number"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: f.licenseNumber,
+    onChange: e => set("licenseNumber", e.target.value),
+    placeholder: "CO-00000",
+    style: {
+      fontFamily: "'IBM Plex Mono', monospace"
+    }
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "License status"
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: f.licenseStatus,
+    onChange: e => set("licenseStatus", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", null, "Not Verified"), /*#__PURE__*/React.createElement("option", null, "Pending Verification"), /*#__PURE__*/React.createElement("option", null, "Verified"), /*#__PURE__*/React.createElement("option", null, "Expired"), /*#__PURE__*/React.createElement("option", null, "Invalid"))), /*#__PURE__*/React.createElement(Field, {
+    label: "Verification date"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "date",
+    value: f.licenseVerificationDate,
+    onChange: e => set("licenseVerificationDate", e.target.value)
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Expiration date"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "date",
+    value: f.licenseExpirationDate,
+    onChange: e => set("licenseExpirationDate", e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "col-span-2"
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Verification notes"
+  }, /*#__PURE__*/React.createElement(TextArea, {
+    rows: 2,
+    value: f.licenseNotes,
+    onChange: e => set("licenseNotes", e.target.value),
+    placeholder: "Notes about verification..."
+  })))))), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-end gap-2 px-6 py-4 border-t",
+    style: {
+      borderColor: C.border
+    }
+  }, /*#__PURE__*/React.createElement(Button, {
+    variant: "ghost",
+    onClick: onClose
+  }, "Cancel"), /*#__PURE__*/React.createElement(Button, {
+    variant: "primary",
+    disabled: !canSave,
+    style: !canSave ? {
+      opacity: 0.5,
+      cursor: "not-allowed"
+    } : {},
+    onClick: () => canSave && onSave(f)
+  }, isNew ? "Add employee" : "Save changes"))));
+}
+
+/* ---------- Verify license modal ---------- */
+function VerifyLicenseModal({
+  emp,
+  onSave,
+  onClose
+}) {
+  const [status, setStatus] = useState(emp.licenseStatus === "Not Verified" ? "Verified" : emp.licenseStatus);
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [exp, setExp] = useState(emp.licenseExpirationDate);
+  const [notes, setNotes] = useState(emp.licenseNotes);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 flex items-center justify-center p-4",
+    style: {
+      background: "rgba(43,33,28,0.45)",
+      zIndex: 60
+    },
+    onMouseDown: e => e.target === e.currentTarget && onClose()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-md rounded-xl shadow-xl",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between px-6 py-4 border-b",
+    style: {
+      borderColor: C.border
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 18,
+      color: C.ink
+    }
+  }, "Verify license"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      color: C.inkSoft,
+      fontSize: 20
+    },
+    "aria-label": "Close"
+  }, "×")), /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-5 flex flex-col gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm",
+    style: {
+      color: C.inkSoft
+    }
+  }, fullName(emp), " · ", emp.licenseType), /*#__PURE__*/React.createElement(LicensePlate, {
+    emp: emp
+  }), /*#__PURE__*/React.createElement(Field, {
+    label: "Verification result"
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: status,
+    onChange: e => setStatus(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", null, "Verified"), /*#__PURE__*/React.createElement("option", null, "Pending Verification"), /*#__PURE__*/React.createElement("option", null, "Expired"), /*#__PURE__*/React.createElement("option", null, "Invalid"), /*#__PURE__*/React.createElement("option", null, "Not Verified"))), /*#__PURE__*/React.createElement(Field, {
+    label: "Date verified"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value)
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Expiration date"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "date",
+    value: exp,
+    onChange: e => setExp(e.target.value)
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Verification notes"
+  }, /*#__PURE__*/React.createElement(TextArea, {
+    rows: 3,
+    value: notes,
+    onChange: e => setNotes(e.target.value),
+    placeholder: "How was this verified..."
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-end gap-2 px-6 py-4 border-t",
+    style: {
+      borderColor: C.border
+    }
+  }, /*#__PURE__*/React.createElement(Button, {
+    variant: "ghost",
+    onClick: onClose
+  }, "Cancel"), /*#__PURE__*/React.createElement(Button, {
+    variant: "primary",
+    onClick: () => onSave({
+      licenseStatus: status,
+      licenseVerificationDate: date,
+      licenseExpirationDate: exp,
+      licenseNotes: notes
+    })
+  }, "Record verification"))));
+}
+
+/* ---------- Employee profile drawer ---------- */
+function EmployeeDrawer({
+  emp,
+  onClose,
+  onUpdate,
+  onArchive,
+  onEdit
+}) {
+  const [noteText, setNoteText] = useState("");
+  const [showHistory, setShowHistory] = useState(false);
+  const [showVerify, setShowVerify] = useState(false);
+  const disp = licenseDisplay(emp);
+  const pct = overallProgress(emp);
+  const toggleStep = (sysKey, idx) => {
+    const steps = [...emp.accounts[sysKey].steps];
+    steps[idx] = !steps[idx];
+    const updated = {
+      ...emp,
+      accounts: {
+        ...emp.accounts,
+        [sysKey]: {
+          ...emp.accounts[sysKey],
+          steps
+        }
+      }
+    };
+    onUpdate(addHistory(updated, `${ALL_SYSTEM_DEFS.find(s => s.key === sysKey).label}: "${ALL_SYSTEM_DEFS.find(s => s.key === sysKey).steps[idx]}" ${steps[idx] ? "checked" : "unchecked"}`));
+  };
+  const [showFcPassword, setShowFcPassword] = useState(false);
+  const updateFranConnectField = (field, value) => {
+    const updated = {
+      ...emp,
+      accounts: {
+        ...emp.accounts,
+        franconnect: {
+          ...emp.accounts.franconnect,
+          [field]: value
+        }
+      }
+    };
+    onUpdate(updated);
+  };
+  const toggleTraining = label => {
+    const current = emp.training || {};
+    const updated = {
+      ...emp,
+      training: {
+        ...current,
+        [label]: !current[label]
+      }
+    };
+    onUpdate(addHistory(updated, `Training "${label}" marked ${!current[label] ? "completed" : "not completed"}`));
+  };
+  const toggleLkTraining = course => {
+    const current = emp.lkTraining || {};
+    const updated = {
+      ...emp,
+      lkTraining: {
+        ...current,
+        [course]: !current[course]
+      }
+    };
+    onUpdate(addHistory(updated, `Training "${course}" marked ${!current[course] ? "completed" : "not completed"}`));
+  };
+  const toggleServiceReadiness = (service, field) => {
+    const current = emp.serviceReadiness || {};
+    const currentItem = current[service] || {
+      courseDone: false,
+      modelDone: false,
+      openToGuests: false
+    };
+    const updated = {
+      ...emp,
+      serviceReadiness: {
+        ...current,
+        [service]: {
+          ...currentItem,
+          [field]: !currentItem[field]
+        }
+      }
+    };
+    onUpdate(addHistory(updated, `${service} \u2014 ${field} ${!currentItem[field] ? "checked" : "unchecked"}`));
+  };
+  const toggleI9 = field => {
+    const i9 = {
+      ...emp.i9,
+      [field]: !emp.i9[field]
+    };
+    onUpdate(addHistory({
+      ...emp,
+      i9
+    }, `I-9 ${field} ${i9[field] ? "checked" : "unchecked"}`));
+  };
+  const addNote = () => {
+    if (!noteText.trim()) return;
+    const updated = {
+      ...emp,
+      notes: [{
+        id: uid(),
+        text: noteText.trim(),
+        date: new Date().toISOString()
+      }, ...emp.notes]
+    };
+    onUpdate(addHistory(updated, "Note added"));
+    setNoteText("");
+  };
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0",
+    style: {
+      background: "rgba(43,33,28,0.35)",
+      zIndex: 40
+    },
+    onClick: onClose
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "fixed top-0 right-0 h-full w-full max-w-xl overflow-y-auto shadow-2xl",
+    style: {
+      background: C.bg,
+      zIndex: 50,
+      borderLeft: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "sticky top-0 flex items-center justify-between px-6 py-4 border-b",
+    style: {
+      background: C.bg,
+      borderColor: C.border,
+      zIndex: 1
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold",
+    style: {
+      background: C.roseTint,
+      color: C.roseDark,
+      fontFamily: "'Inter', sans-serif"
+    }
+  }, emp.firstName[0], emp.lastName[0]), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 20,
+      color: C.ink
+    }
+  }, fullName(emp)), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkSoft
+    }
+  }, emp.position, " · ", emp.location))), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      color: C.inkSoft,
+      fontSize: 22
+    },
+    "aria-label": "Close"
+  }, "×")), /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-5 flex flex-col gap-6"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement(Button, {
+    variant: "secondary",
+    onClick: () => onEdit(emp)
+  }, "Edit details"), /*#__PURE__*/React.createElement(Button, {
+    variant: "ghost",
+    onClick: () => onArchive(emp.id)
+  }, emp.archived ? "Unarchive" : "Archive"), /*#__PURE__*/React.createElement("div", {
+    className: "ml-auto text-right"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkSoft
+    }
+  }, "Overall progress"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 22,
+      color: C.ink
+    }
+  }, pct, "%"))), /*#__PURE__*/React.createElement(ProgressBar, {
+    pct: pct
+  }), /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-3",
+    style: {
+      color: C.roseDark
+    }
+  }, "Employee information"), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-y-2 text-sm"
+  }, /*#__PURE__*/React.createElement(InfoRow, {
+    label: "Email",
+    value: emp.email || "\u2014"
+  }), /*#__PURE__*/React.createElement(InfoRow, {
+    label: "Phone",
+    value: emp.phone || "\u2014"
+  }), /*#__PURE__*/React.createElement(InfoRow, {
+    label: "Start date",
+    value: fmtDate(emp.startDate)
+  }), /*#__PURE__*/React.createElement(InfoRow, {
+    label: "Status",
+    value: emp.employeeStatus
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mt-3"
+  }, /*#__PURE__*/React.createElement(Badge, {
+    icon: emp.offerSent ? "\u{1F7E2}" : "\u{1F534}",
+    label: emp.offerSent ? "Offer sent" : "Offer not sent",
+    color: emp.offerSent ? C.sage : C.brick,
+    tint: emp.offerSent ? C.sageTint : C.brickTint
+  }), /*#__PURE__*/React.createElement(Badge, {
+    icon: emp.offerSigned ? "\u{1F7E2}" : "\u{1F534}",
+    label: emp.offerSigned ? "Offer signed" : "Offer not signed",
+    color: emp.offerSigned ? C.sage : C.brick,
+    tint: emp.offerSigned ? C.sageTint : C.brickTint
+  }))), /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide",
+    style: {
+      color: C.roseDark
+    }
+  }, "Professional license"), /*#__PURE__*/React.createElement(Badge, {
+    icon: disp.icon,
+    label: disp.label,
+    color: disp.color,
+    tint: disp.tint
+  })), /*#__PURE__*/React.createElement(LicensePlate, {
+    emp: emp,
+    large: true
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-y-2 text-sm mt-3"
+  }, /*#__PURE__*/React.createElement(InfoRow, {
+    label: "Verified on",
+    value: fmtDate(emp.licenseVerificationDate)
+  }), /*#__PURE__*/React.createElement(InfoRow, {
+    label: "Expires",
+    value: fmtDate(emp.licenseExpirationDate)
+  })), emp.licenseNotes && /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mt-2",
+    style: {
+      color: C.inkSoft
+    }
+  }, emp.licenseNotes), /*#__PURE__*/React.createElement("div", {
+    className: "mt-3"
+  }, /*#__PURE__*/React.createElement(Button, {
+    variant: "secondary",
+    onClick: () => setShowVerify(true)
+  }, "Verify license"))), /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-3",
+    style: {
+      color: C.roseDark
+    }
+  }, "Account onboarding"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-4"
+  }, systemDefsFor(emp).map(sys => {
+    const steps = emp.accounts[sys.key].steps;
+    const status = systemStatus(steps);
+    const complete = stepCount(steps) === steps.length;
+    return /*#__PURE__*/React.createElement("div", {
+      key: sys.key
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between mb-1.5"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-sm font-medium",
+      style: {
+        color: C.ink
+      }
+    }, sys.label), /*#__PURE__*/React.createElement(Badge, {
+      icon: complete ? "\u{1F7E2}" : stepCount(steps) === 0 ? "\u{1F534}" : "\u{1F7E1}",
+      label: status,
+      color: complete ? C.sage : stepCount(steps) === 0 ? C.brick : C.amber,
+      tint: complete ? C.sageTint : stepCount(steps) === 0 ? C.brickTint : C.amberTint
+    })), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col gap-1 pl-1"
+    }, sys.steps.map((label, idx) => /*#__PURE__*/React.createElement("label", {
+      key: idx,
+      className: "flex items-center gap-2 text-sm cursor-pointer",
+      style: {
+        color: C.inkSoft
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: steps[idx],
+      onChange: () => toggleStep(sys.key, idx)
+    }), label))), sys.key === "franconnect" && /*#__PURE__*/React.createElement("div", {
+      className: "mt-2 pl-1 flex flex-col gap-2 rounded-md p-3",
+      style: {
+        background: C.bg,
+        border: `1px solid ${C.border}`
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-xs font-semibold uppercase tracking-wide",
+      style: {
+        color: C.inkFaint
+      }
+    }, "Login credentials"), /*#__PURE__*/React.createElement(Field, {
+      label: "Login ID"
+    }, /*#__PURE__*/React.createElement(TextInput, {
+      placeholder: "Login ID",
+      value: emp.accounts.franconnect.loginId || "",
+      onChange: e => updateFranConnectField("loginId", e.target.value)
+    })), /*#__PURE__*/React.createElement(Field, {
+      label: "Password"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex gap-2"
+    }, /*#__PURE__*/React.createElement(TextInput, {
+      style: {
+        flex: 1
+      },
+      type: showFcPassword ? "text" : "password",
+      placeholder: "Password",
+      value: emp.accounts.franconnect.password || "",
+      onChange: e => updateFranConnectField("password", e.target.value)
+    }), /*#__PURE__*/React.createElement(Button, {
+      variant: "ghost",
+      onClick: () => setShowFcPassword(s => !s)
+    }, showFcPassword ? "Hide" : "Show"))), /*#__PURE__*/React.createElement(Field, {
+      label: "System link"
+    }, /*#__PURE__*/React.createElement(TextInput, {
+      placeholder: "https://...",
+      value: emp.accounts.franconnect.url || "",
+      onChange: e => updateFranConnectField("url", e.target.value)
+    })), emp.accounts.franconnect.url && /*#__PURE__*/React.createElement("a", {
+      href: emp.accounts.franconnect.url,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      className: "text-sm font-medium",
+      style: {
+        color: C.roseDark
+      }
+    }, "Open FranConnect →")));
+  }))), /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide",
+    style: {
+      color: C.roseDark
+    }
+  }, "Training"), isLashKind(emp) && (() => {
+    const doneCount = LASHBAR_COURSES.filter(c => emp.lkTraining && emp.lkTraining[c]).length;
+    const total = LASHBAR_COURSES.length;
+    const label = doneCount === 0 ? "Not Started" : doneCount === total ? "Completed" : "In progress";
+    const color = doneCount === 0 ? C.brick : doneCount === total ? C.sage : C.amber;
+    const tint = doneCount === 0 ? C.brickTint : doneCount === total ? C.sageTint : C.amberTint;
+    const icon = doneCount === 0 ? "\u{1F534}" : doneCount === total ? "\u{1F7E2}" : "\u{1F7E1}";
+    return /*#__PURE__*/React.createElement(Badge, {
+      icon: icon,
+      label: label,
+      color: color,
+      tint: tint
+    });
+  })()), isLashKind(emp) ? /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, LASHBAR_COURSES.map(course => {
+    const done = !!(emp.lkTraining && emp.lkTraining[course]);
+    return /*#__PURE__*/React.createElement("div", {
+      key: course,
+      className: "flex items-center justify-between gap-3 py-1"
+    }, /*#__PURE__*/React.createElement("label", {
+      className: "flex items-center gap-2 text-sm cursor-pointer",
+      style: {
+        color: C.inkSoft
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: done,
+      onChange: () => toggleLkTraining(course)
+    }), course), /*#__PURE__*/React.createElement("a", {
+      href: LASHBAR_TRAINING_URL,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      className: "text-xs font-medium whitespace-nowrap",
+      style: {
+        color: C.roseDark
+      }
+    }, "Open course →"));
+  })) : /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, TRAINING_VIDEOS.map(v => {
+    const done = !!(emp.training && emp.training[v.label]);
+    return /*#__PURE__*/React.createElement("div", {
+      key: v.label,
+      className: "flex items-center justify-between gap-3 py-1"
+    }, /*#__PURE__*/React.createElement("label", {
+      className: "flex items-center gap-2 text-sm cursor-pointer",
+      style: {
+        color: C.inkSoft
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: done,
+      onChange: () => toggleTraining(v.label)
+    }), v.label), /*#__PURE__*/React.createElement("a", {
+      href: v.url,
+      target: "_blank",
+      rel: "noopener noreferrer",
+      className: "text-xs font-medium whitespace-nowrap",
+      style: {
+        color: C.roseDark
+      }
+    }, "Open video →"));
+  }))), isLashKind(emp) && /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-3",
+    style: {
+      color: C.roseDark
+    }
+  }, "Service readiness"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-3"
+  }, SERVICE_READINESS_ITEMS.map(service => {
+    const item = emp.serviceReadiness && emp.serviceReadiness[service] || {
+      courseDone: false,
+      modelDone: false,
+      openToGuests: false
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      key: service,
+      className: "pb-2",
+      style: {
+        borderBottom: `1px solid ${C.border}`
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "text-sm font-medium mb-1.5",
+      style: {
+        color: C.ink
+      }
+    }, service), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap gap-x-4 gap-y-1"
+    }, /*#__PURE__*/React.createElement("label", {
+      className: "flex items-center gap-2 text-sm cursor-pointer",
+      style: {
+        color: C.inkSoft
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: item.courseDone,
+      onChange: () => toggleServiceReadiness(service, "courseDone")
+    }), "Course done"), /*#__PURE__*/React.createElement("label", {
+      className: "flex items-center gap-2 text-sm cursor-pointer",
+      style: {
+        color: C.inkSoft
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: item.modelDone,
+      onChange: () => toggleServiceReadiness(service, "modelDone")
+    }), "Model done"), /*#__PURE__*/React.createElement("label", {
+      className: "flex items-center gap-2 text-sm cursor-pointer",
+      style: {
+        color: C.inkSoft
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "checkbox",
+      checked: item.openToGuests,
+      onChange: () => toggleServiceReadiness(service, "openToGuests")
+    }), "Open to guests")));
+  }))), /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide",
+    style: {
+      color: C.roseDark
+    }
+  }, "I-9 employment eligibility"), (() => {
+    const b = i9Badge(emp.i9);
+    return /*#__PURE__*/React.createElement(Badge, {
+      icon: b.icon,
+      label: b.label,
+      color: b.color,
+      tint: b.tint
+    });
+  })()), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-1"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "flex items-center gap-2 text-sm cursor-pointer",
+    style: {
+      color: C.inkSoft
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: emp.i9.completed,
+    onChange: () => toggleI9("completed")
+  }), "I-9 completed"), /*#__PURE__*/React.createElement("label", {
+    className: "flex items-center gap-2 text-sm cursor-pointer",
+    style: {
+      color: C.inkSoft
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: emp.i9.signed,
+    onChange: () => toggleI9("signed")
+  }), "I-9 signed"))), /*#__PURE__*/React.createElement("section", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-3",
+    style: {
+      color: C.roseDark
+    }
+  }, "Notes"), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 mb-3"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    style: {
+      flex: 1
+    },
+    placeholder: "Add a note...",
+    value: noteText,
+    onChange: e => setNoteText(e.target.value),
+    onKeyDown: e => e.key === "Enter" && addNote()
+  }), /*#__PURE__*/React.createElement(Button, {
+    variant: "secondary",
+    onClick: addNote
+  }, "Add")), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, emp.notes.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-sm",
+    style: {
+      color: C.inkFaint
+    }
+  }, "No notes yet."), emp.notes.map(n => /*#__PURE__*/React.createElement("div", {
+    key: n.id,
+    className: "text-sm rounded-md px-3 py-2",
+    style: {
+      background: C.bg,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.ink
+    }
+  }, n.text), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs mt-1",
+    style: {
+      color: C.inkFaint
+    }
+  }, new Date(n.date).toLocaleString()))))), /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("button", {
+    className: "text-xs font-semibold uppercase tracking-wide flex items-center gap-1",
+    style: {
+      color: C.roseDark
+    },
+    onClick: () => setShowHistory(s => !s)
+  }, "Onboarding history ", showHistory ? "\u2212" : "+"), showHistory && /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2 mt-3"
+  }, emp.history.length === 0 && /*#__PURE__*/React.createElement("p", {
+    className: "text-sm",
+    style: {
+      color: C.inkFaint
+    }
+  }, "No history yet."), emp.history.map(h => /*#__PURE__*/React.createElement("div", {
+    key: h.id,
+    className: "text-xs flex justify-between",
+    style: {
+      color: C.inkSoft
+    }
+  }, /*#__PURE__*/React.createElement("span", null, h.text), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.inkFaint
+    }
+  }, new Date(h.date).toLocaleDateString()))))))), showVerify && /*#__PURE__*/React.createElement(VerifyLicenseModal, {
+    emp: emp,
+    onClose: () => setShowVerify(false),
+    onSave: patch => {
+      onUpdate(addHistory({
+        ...emp,
+        ...patch
+      }, `License verification recorded: ${patch.licenseStatus}`));
+      setShowVerify(false);
+    }
+  }));
+}
+function InfoRow({
+  label,
+  value
+}) {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkFaint
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: C.ink
+    }
+  }, value));
+}
+
+/* ---------- Dashboard table row ---------- */
+function DashboardRow({
+  emp,
+  onOpen
+}) {
+  const disp = licenseDisplay(emp);
+  const offer = offerDisplay(emp);
+  const pct = overallProgress(emp);
+  return /*#__PURE__*/React.createElement("tr", {
+    className: "cursor-pointer",
+    style: {
+      borderBottom: `1px solid ${C.border}`
+    },
+    onClick: () => onOpen(emp.id)
+  }, /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0",
+    style: {
+      background: C.roseTint,
+      color: C.roseDark
+    }
+  }, emp.firstName[0], emp.lastName[0]), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-medium",
+    style: {
+      color: C.ink
+    }
+  }, fullName(emp)), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkFaint
+    }
+  }, emp.employeeStatus)))), /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-3 text-sm",
+    style: {
+      color: C.inkSoft
+    }
+  }, emp.position), /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-3 text-sm",
+    style: {
+      color: C.inkSoft
+    }
+  }, emp.location), /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-3"
+  }, /*#__PURE__*/React.createElement(Badge, {
+    icon: offer.icon,
+    label: offer.label,
+    color: offer.color,
+    tint: offer.tint
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-3"
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "'IBM Plex Mono', monospace",
+      fontSize: 12.5,
+      color: emp.licenseNumber ? C.ink : C.inkFaint
+    }
+  }, emp.licenseNumber || "\u2014")), /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-3"
+  }, /*#__PURE__*/React.createElement(Badge, {
+    icon: disp.icon,
+    label: disp.label,
+    color: disp.color,
+    tint: disp.tint
+  })), systemDefsFor(emp).map(sys => {
+    const steps = emp.accounts[sys.key].steps;
+    const c = stepCount(steps);
+    const complete = c === steps.length;
+    return /*#__PURE__*/React.createElement("td", {
+      key: sys.key,
+      className: "py-3 pr-3"
+    }, /*#__PURE__*/React.createElement(Badge, {
+      icon: complete ? "\u{1F7E2}" : c === 0 ? "\u{1F534}" : "\u{1F7E1}",
+      label: systemStatus(steps),
+      color: complete ? C.sage : c === 0 ? C.brick : C.amber,
+      tint: complete ? C.sageTint : c === 0 ? C.brickTint : C.amberTint
+    }));
+  }), /*#__PURE__*/React.createElement("td", {
+    className: "py-3 pr-1 w-32"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(ProgressBar, {
+    pct: pct
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-medium",
+    style: {
+      color: C.inkSoft,
+      minWidth: 30
+    }
+  }, pct, "%"))));
+}
+
+/* ---------- Main app ---------- */
+function App() {
+  const [employees, setEmployees] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("dashboardBlo");
+  const [selectedId, setSelectedId] = useState(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [editingEmp, setEditingEmp] = useState(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [q, setQ] = useState("");
+  const [fPosition, setFPosition] = useState("");
+  const [fLocation, setFLocation] = useState("");
+  const [fLicenseType, setFLicenseType] = useState("");
+  const [fLicenseStatus, setFLicenseStatus] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  useEffect(() => {
+    let unsubscribe = null;
+    (async () => {
+      try {
+        const res = await window.storage.get("front-desk-employees", true);
+        if (res && res.value) {
+          setEmployees(JSON.parse(res.value));
+        } else {
+          const seed = seedEmployees();
+          setEmployees(seed);
+          await window.storage.set("front-desk-employees", JSON.stringify(seed), true);
+        }
+      } catch {
+        setEmployees(seedEmployees());
+      } finally {
+        setLoading(false);
+      }
+      // Optional live-sync hook: if the hosting page defines window.storageSubscribe
+      // (used by the shared, publicly-hosted version), subscribe so every visitor's
+      // screen updates automatically the moment anyone else makes a change.
+      if (typeof window.storageSubscribe === "function") {
+        unsubscribe = window.storageSubscribe("front-desk-employees", value => {
+          if (value) {
+            try {
+              setEmployees(JSON.parse(value));
+            } catch {}
+          }
+        });
+      }
+    })();
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+  useEffect(() => {
+    if (employees === null) return;
+    (async () => {
+      try {
+        await window.storage.set("front-desk-employees", JSON.stringify(employees), true);
+      } catch {}
+    })();
+  }, [employees]);
+  const updateEmployee = useCallback(updated => {
+    setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+  }, []);
+  const addEmployee = emp => {
+    setEmployees(prev => [addHistory(emp, "Employee added"), ...prev]);
+    setShowAdd(false);
+  };
+  const saveEditedEmployee = emp => {
+    setEmployees(prev => prev.map(e => e.id === emp.id ? addHistory(emp, "Employee details updated") : e));
+    setEditingEmp(null);
+  };
+  const archiveToggle = id => {
+    setEmployees(prev => prev.map(e => e.id === id ? addHistory({
+      ...e,
+      archived: !e.archived
+    }, e.archived ? "Unarchived" : "Archived") : e));
+  };
+  const visible = useMemo(() => {
+    if (!employees) return [];
+    return employees.filter(e => e.archived === showArchived);
+  }, [employees, showArchived]);
+  const filtered = useMemo(() => {
+    return visible.filter(e => {
+      if (q && !fullName(e).toLowerCase().includes(q.toLowerCase()) && !e.email.toLowerCase().includes(q.toLowerCase())) return false;
+      if (fPosition && e.position !== fPosition) return false;
+      if (fLocation && e.location !== fLocation) return false;
+      if (fLicenseType && e.licenseType !== fLicenseType) return false;
+      if (fLicenseStatus && licenseDisplay(e).label !== fLicenseStatus) return false;
+      if (fStatus && e.employeeStatus !== fStatus) return false;
+      return true;
+    });
+  }, [visible, q, fPosition, fLocation, fLicenseType, fLicenseStatus, fStatus]);
+  const computeStats = list => {
+    const active = list.filter(e => !e.archived);
+    return {
+      total: active.length,
+      missingLicense: active.filter(e => !e.licenseNumber).length,
+      notVerified: active.filter(e => ["Not Verified", "Pending Verification"].includes(e.licenseStatus)).length,
+      completed: active.filter(e => overallProgress(e) === 100).length
+    };
+  };
+  const bloStats = useMemo(() => computeStats(employees ? employees.filter(e => !isLashKind(e)) : []), [employees]);
+  const lkStats = useMemo(() => computeStats(employees ? employees.filter(e => isLashKind(e)) : []), [employees]);
+  const attentionItems = useMemo(() => employees ? buildAttentionItems(employees) : [], [employees]);
+  const selected = employees ? employees.find(e => e.id === selectedId) : null;
+  if (loading || employees === null) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "w-full flex items-center justify-center py-24",
+      style: {
+        background: C.bg
+      }
+    }, /*#__PURE__*/React.createElement("style", null, FONT_IMPORT), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.inkSoft,
+        fontFamily: "'Inter', sans-serif"
+      }
+    }, "Loading onboarding data..."));
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "w-full min-h-screen flex",
+    style: {
+      background: C.bg,
+      fontFamily: "'Inter', sans-serif"
+    }
+  }, /*#__PURE__*/React.createElement("style", null, FONT_IMPORT), /*#__PURE__*/React.createElement("div", {
+    className: "w-60 shrink-0 flex flex-col gap-6 px-5 py-6 border-r",
+    style: {
+      borderColor: C.border
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("img", {
+    src: LOGO_SRC,
+    alt: "Blo Blow Dry Bar - Kingwood, Woodsons Reserve",
+    style: {
+      width: "100%",
+      maxWidth: 168,
+      display: "block"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs mt-1",
+    style: {
+      color: C.inkFaint
+    }
+  }, "Onboarding System")), /*#__PURE__*/React.createElement(Button, {
+    variant: "primary",
+    onClick: () => setShowAdd(true),
+    style: {
+      justifyContent: "center"
+    }
+  }, "+ Add new employee"), /*#__PURE__*/React.createElement("nav", {
+    className: "flex flex-col gap-1"
+  }, [{
+    key: "dashboardBlo",
+    label: "BLO Dashboard"
+  }, {
+    key: "dashboardLk",
+    label: "LK Dashboard"
+  }, {
+    key: "attention",
+    label: `Needs attention${attentionItems.length ? ` (${attentionItems.length})` : ""}`
+  }, {
+    key: "materials",
+    label: "Front Desk Training Materials"
+  }, {
+    key: "lkMaterials",
+    label: "LK Lash Tech Training Materials"
+  }].map(item => /*#__PURE__*/React.createElement("button", {
+    key: item.key,
+    onClick: () => setView(item.key),
+    className: "text-left text-sm px-3 py-2 rounded-md",
+    style: {
+      background: view === item.key ? C.roseTint : "transparent",
+      color: view === item.key ? C.roseDark : C.inkSoft,
+      fontWeight: view === item.key ? 600 : 500
+    }
+  }, item.label))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs font-semibold uppercase tracking-wide mb-2 px-3",
+    style: {
+      color: C.inkFaint
+    }
+  }, "Training videos"), /*#__PURE__*/React.createElement("nav", {
+    className: "flex flex-col gap-1"
+  }, TRAINING_VIDEOS.map(v => /*#__PURE__*/React.createElement("a", {
+    key: v.label,
+    href: v.url,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "text-left text-sm px-3 py-2 rounded-md flex items-center gap-2",
+    style: {
+      color: C.inkSoft
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "▶"), v.label)))), /*#__PURE__*/React.createElement("label", {
+    className: "flex items-center gap-2 text-xs mt-auto",
+    style: {
+      color: C.inkFaint
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: showArchived,
+    onChange: e => setShowArchived(e.target.checked)
+  }), "Show archived employees")), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 px-8 py-6 min-w-0"
+  }, view === "dashboardBlo" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-4 gap-3 mb-6"
+  }, /*#__PURE__*/React.createElement(StatCard, {
+    label: "Active employees",
+    value: bloStats.total
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "Missing license #",
+    value: bloStats.missingLicense,
+    color: bloStats.missingLicense ? C.brick : undefined
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "License not verified",
+    value: bloStats.notVerified,
+    color: bloStats.notVerified ? C.amber : undefined
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "Fully onboarded",
+    value: bloStats.completed,
+    color: C.sage
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center gap-2 mb-4"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    placeholder: "Search name or email...",
+    value: q,
+    onChange: e => setQ(e.target.value),
+    style: {
+      minWidth: 200
+    }
+  }), /*#__PURE__*/React.createElement(Select, {
+    value: fPosition,
+    onChange: e => setFPosition(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All positions"), POSITIONS.map(p => /*#__PURE__*/React.createElement("option", {
+    key: p
+  }, p))), /*#__PURE__*/React.createElement(Select, {
+    value: fLocation,
+    onChange: e => setFLocation(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All locations"), LOCATIONS.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l
+  }, l))), /*#__PURE__*/React.createElement(Select, {
+    value: fLicenseType,
+    onChange: e => setFLicenseType(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All license types"), /*#__PURE__*/React.createElement("option", null, "Cosmetology"), /*#__PURE__*/React.createElement("option", null, "Esthetician"), /*#__PURE__*/React.createElement("option", null, "Other")), /*#__PURE__*/React.createElement(Select, {
+    value: fLicenseStatus,
+    onChange: e => setFLicenseStatus(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All license statuses"), /*#__PURE__*/React.createElement("option", null, "Verified"), /*#__PURE__*/React.createElement("option", null, "Not verified"), /*#__PURE__*/React.createElement("option", null, "Pending verification"), /*#__PURE__*/React.createElement("option", null, "Expiring soon"), /*#__PURE__*/React.createElement("option", null, "Expired"), /*#__PURE__*/React.createElement("option", null, "Invalid"), /*#__PURE__*/React.createElement("option", null, "Missing number")), /*#__PURE__*/React.createElement(Select, {
+    value: fStatus,
+    onChange: e => setFStatus(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All onboarding statuses"), /*#__PURE__*/React.createElement("option", null, "New Hire"), /*#__PURE__*/React.createElement("option", null, "In Progress"), /*#__PURE__*/React.createElement("option", null, "Completed"))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-lg overflow-hidden",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "overflow-x-auto"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "w-full",
+    style: {
+      minWidth: 900
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    className: "text-left text-xs uppercase tracking-wide",
+    style: {
+      color: C.inkFaint,
+      borderBottom: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 pl-4 font-medium"
+  }, "Employee"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "Position"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "Location"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "Offer"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "License #"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "License status"), ["QuickBooks", "Booker", "FranConnect", "Discord"].map(label => /*#__PURE__*/React.createElement("th", {
+    key: label,
+    className: "py-3 pr-3 font-medium"
+  }, label)), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-1 font-medium"
+  }, "Progress"))), /*#__PURE__*/React.createElement("tbody", {
+    className: "px-4"
+  }, filtered.filter(e => !isLashKind(e)).map(emp => /*#__PURE__*/React.createElement(DashboardRow, {
+    key: emp.id,
+    emp: emp,
+    onOpen: setSelectedId
+  }))))), filtered.filter(e => !isLashKind(e)).length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "py-10 text-center text-sm",
+    style: {
+      color: C.inkFaint
+    }
+  }, "No employees match these filters."))), view === "dashboardLk" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-4 gap-3 mb-6"
+  }, /*#__PURE__*/React.createElement(StatCard, {
+    label: "Active employees",
+    value: lkStats.total
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "Missing license #",
+    value: lkStats.missingLicense,
+    color: lkStats.missingLicense ? C.brick : undefined
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "License not verified",
+    value: lkStats.notVerified,
+    color: lkStats.notVerified ? C.amber : undefined
+  }), /*#__PURE__*/React.createElement(StatCard, {
+    label: "Fully onboarded",
+    value: lkStats.completed,
+    color: C.sage
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap items-center gap-2 mb-4"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    placeholder: "Search name or email...",
+    value: q,
+    onChange: e => setQ(e.target.value),
+    style: {
+      minWidth: 200
+    }
+  }), /*#__PURE__*/React.createElement(Select, {
+    value: fPosition,
+    onChange: e => setFPosition(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All positions"), POSITIONS.map(p => /*#__PURE__*/React.createElement("option", {
+    key: p
+  }, p))), /*#__PURE__*/React.createElement(Select, {
+    value: fLocation,
+    onChange: e => setFLocation(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All locations"), LOCATIONS.map(l => /*#__PURE__*/React.createElement("option", {
+    key: l
+  }, l))), /*#__PURE__*/React.createElement(Select, {
+    value: fLicenseType,
+    onChange: e => setFLicenseType(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All license types"), /*#__PURE__*/React.createElement("option", null, "Cosmetology"), /*#__PURE__*/React.createElement("option", null, "Esthetician"), /*#__PURE__*/React.createElement("option", null, "Other")), /*#__PURE__*/React.createElement(Select, {
+    value: fLicenseStatus,
+    onChange: e => setFLicenseStatus(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All license statuses"), /*#__PURE__*/React.createElement("option", null, "Verified"), /*#__PURE__*/React.createElement("option", null, "Not verified"), /*#__PURE__*/React.createElement("option", null, "Pending verification"), /*#__PURE__*/React.createElement("option", null, "Expiring soon"), /*#__PURE__*/React.createElement("option", null, "Expired"), /*#__PURE__*/React.createElement("option", null, "Invalid"), /*#__PURE__*/React.createElement("option", null, "Missing number")), /*#__PURE__*/React.createElement(Select, {
+    value: fStatus,
+    onChange: e => setFStatus(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All onboarding statuses"), /*#__PURE__*/React.createElement("option", null, "New Hire"), /*#__PURE__*/React.createElement("option", null, "In Progress"), /*#__PURE__*/React.createElement("option", null, "Completed"))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-lg overflow-hidden",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "overflow-x-auto"
+  }, /*#__PURE__*/React.createElement("table", {
+    className: "w-full",
+    style: {
+      minWidth: 900
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+    className: "text-left text-xs uppercase tracking-wide",
+    style: {
+      color: C.inkFaint,
+      borderBottom: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 pl-4 font-medium"
+  }, "Employee"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "Position"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "Location"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "Offer"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "License #"), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-3 font-medium"
+  }, "License status"), ["QuickBooks", "Zenoti", "LashBar LMS", "Discord"].map(label => /*#__PURE__*/React.createElement("th", {
+    key: label,
+    className: "py-3 pr-3 font-medium"
+  }, label)), /*#__PURE__*/React.createElement("th", {
+    className: "py-3 pr-1 font-medium"
+  }, "Progress"))), /*#__PURE__*/React.createElement("tbody", {
+    className: "px-4"
+  }, filtered.filter(e => isLashKind(e)).map(emp => /*#__PURE__*/React.createElement(DashboardRow, {
+    key: emp.id,
+    emp: emp,
+    onOpen: setSelectedId
+  }))))), filtered.filter(e => isLashKind(e)).length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "py-10 text-center text-sm",
+    style: {
+      color: C.inkFaint
+    }
+  }, "No employees match these filters."))), view === "attention" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 24,
+      color: C.ink
+    },
+    className: "mb-1"
+  }, "Needs attention"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mb-5",
+    style: {
+      color: C.inkSoft
+    }
+  }, "Automatically generated from license, account, and I-9 status across active employees."), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2"
+  }, attentionItems.length === 0 && /*#__PURE__*/React.createElement("div", {
+    className: "text-sm rounded-lg p-4",
+    style: {
+      background: C.sageTint,
+      color: C.sage
+    }
+  }, "Nothing needs attention right now. Every employee is on track."), attentionItems.map(item => {
+    const emp = employees.find(e => fullName(e) === item.name);
+    const style = item.level === "critical" ? {
+      icon: "\u{1F534}",
+      tint: C.brickTint,
+      color: C.brick
+    } : item.level === "warning" ? {
+      icon: "\u{1F7E1}",
+      tint: C.amberTint,
+      color: C.amber
+    } : {
+      icon: "\u2139\uFE0F",
+      tint: C.slateTint,
+      color: C.slate
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      key: item.id,
+      className: "flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer",
+      style: {
+        background: C.surface,
+        border: `1px solid ${C.border}`
+      },
+      onClick: () => emp && setSelectedId(emp.id)
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0",
+      style: {
+        background: style.tint
+      }
+    }, style.icon), /*#__PURE__*/React.createElement("div", {
+      className: "text-sm"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "font-medium",
+      style: {
+        color: C.ink
+      }
+    }, item.name), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.inkSoft
+      }
+    }, " — ", item.msg)));
+  }))), view === "materials" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 24,
+      color: C.ink
+    },
+    className: "mb-1"
+  }, "Front Desk Training Materials"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mb-5",
+    style: {
+      color: C.inkSoft
+    }
+  }, "Reference slides for training front desk / reservationist staff on the POS system."), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2",
+    style: {
+      maxWidth: 520
+    }
+  }, FRONT_DESK_MATERIALS.map(m => /*#__PURE__*/React.createElement("a", {
+    key: m.label,
+    href: m.url,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "flex items-center gap-3 px-4 py-3 rounded-lg",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      color: C.ink,
+      textDecoration: "none"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-9 h-9 rounded-md flex items-center justify-center text-sm shrink-0",
+    style: {
+      background: C.roseTint,
+      color: C.roseDark
+    }
+  }, "📄"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-medium"
+  }, m.label), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkFaint
+    }
+  }, "Opens in Google Drive · view or download")), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-medium",
+    style: {
+      color: C.roseDark
+    }
+  }, "Open →"))))), view === "lkMaterials" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 24,
+      color: C.ink
+    },
+    className: "mb-1"
+  }, "LK Lash Tech Training Materials"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mb-5",
+    style: {
+      color: C.inkSoft
+    }
+  }, "Reference training resources for LashKind lash technicians."), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col gap-2",
+    style: {
+      maxWidth: 520
+    }
+  }, LK_TRAINING_MATERIALS.map(m => /*#__PURE__*/React.createElement("a", {
+    key: m.label,
+    href: m.url,
+    target: "_blank",
+    rel: "noopener noreferrer",
+    className: "flex items-center gap-3 px-4 py-3 rounded-lg",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`,
+      color: C.ink,
+      textDecoration: "none"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "w-9 h-9 rounded-md flex items-center justify-center text-sm shrink-0",
+    style: {
+      background: C.roseTint,
+      color: C.roseDark
+    }
+  }, "📄"), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm font-medium"
+  }, m.label), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkFaint
+    }
+  }, "Opens LashBar course catalog")), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-medium",
+    style: {
+      color: C.roseDark
+    }
+  }, "Open →")))))), selected && /*#__PURE__*/React.createElement(EmployeeDrawer, {
+    emp: selected,
+    onClose: () => setSelectedId(null),
+    onUpdate: updateEmployee,
+    onArchive: id => {
+      archiveToggle(id);
+    },
+    onEdit: emp => setEditingEmp(emp)
+  }), showAdd && /*#__PURE__*/React.createElement(EmployeeFormModal, {
+    initial: blankEmployee(),
+    onSave: addEmployee,
+    onClose: () => setShowAdd(false)
+  }), editingEmp && /*#__PURE__*/React.createElement(EmployeeFormModal, {
+    initial: editingEmp,
+    onSave: saveEditedEmployee,
+    onClose: () => setEditingEmp(null)
+  }));
+}
+function StatCard({
+  label,
+  value,
+  color
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    className: "rounded-lg p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-xs",
+    style: {
+      color: C.inkFaint
+    }
+  }, label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "'Fraunces', serif",
+      fontSize: 28,
+      color: color || C.ink
+    }
+  }, value));
+}
+try {
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(React.createElement(App));
+} catch (err) {
+  document.getElementById("root").innerHTML =
+    '<div id="boot-msg" class="error"></div>';
+  document.getElementById("boot-msg").textContent =
+    "The app crashed while starting:\n\n" + (err && err.message ? err.message : err);
+  console.error(err);
+}
+</script>
+</body>
+</html>
